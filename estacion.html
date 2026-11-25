@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Visor AR · Modo estación</title>
+<style>
+  :root { --bg: rgba(18,22,28,.86); --fg:#f2f4f7; --mut:#9aa4b2; --acc:#ff8a1f; --ok:#35c26b; --bad:#ff5a5a; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; height:100%; overflow:hidden; background:#1b2129; font:15px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; color:var(--fg); }
+  #cam { position:fixed; inset:0; width:100%; height:100%; object-fit:cover; background:#1b2129; }
+  #stage { position:fixed; inset:0; touch-action:none; }
+  #stage canvas { display:block; width:100%; height:100%; }
+  #cross { position:fixed; left:50%; top:50%; width:34px; height:34px; margin:-17px 0 0 -17px; pointer-events:none; }
+  #cross::before, #cross::after { content:""; position:absolute; background:#fff; box-shadow:0 0 3px #000; }
+  #cross::before { left:16px; top:0; width:2px; height:34px; } #cross::after { top:16px; left:0; height:2px; width:34px; }
+  #top { position:fixed; left:0; right:0; top:0; padding:calc(env(safe-area-inset-top) + 8px) 12px 18px; background:linear-gradient(var(--bg),transparent); pointer-events:none; padding-right:178px; }
+  #top b { display:block; font-size:15px; } #status { color:#ffd9b0; margin-top:2px; min-height:1.3em; font-size:14px; }
+  #mini { position:fixed; right:8px; top:calc(env(safe-area-inset-top) + 8px); width:160px; height:160px; border-radius:12px; background:rgba(18,22,28,.72); }
+  #panel { position:fixed; left:8px; right:8px; bottom:calc(env(safe-area-inset-bottom) + 8px); background:var(--bg); border-radius:14px; padding:12px; max-height:56vh; overflow:auto; backdrop-filter:blur(8px); }
+  #panel.min > :not(#minrow) { display:none; }
+  section { margin-bottom:10px; } section:last-child { margin-bottom:0; }
+  h3 { margin:0 0 6px; font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:var(--mut); }
+  button { appearance:none; border:0; border-radius:10px; padding:11px 14px; font:inherit; font-weight:600; background:#2a313c; color:var(--fg); cursor:pointer; }
+  button.pri { background:var(--acc); color:#1b1206; } button.big { padding:14px 18px; font-size:16px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  label { color:var(--mut); display:flex; gap:6px; align-items:center; }
+  select { background:#2a313c; color:var(--fg); border:0; border-radius:8px; padding:9px; font:inherit; }
+  input[type=range] { width:130px; }
+  .hide { display:none !important; } small { color:var(--mut); }
+  #warn { color:#ffcf5a; margin-top:4px; }
+  .btnl { border-radius:10px; padding:11px 14px; font-weight:600; background:#2a313c; color:var(--fg); cursor:pointer; }
+</style>
+<script>
+// Diagnóstico: muestra en pantalla cualquier error en vez de quedarse en "Cargando…"
+(function () {
+  function show(msg) { var s = document.getElementById('status'); if (s) { s.textContent = '⚠ ' + msg; s.style.color = '#ff9b9b'; } }
+  window.addEventListener('error', function (e) { show(e.message + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
+  window.addEventListener('unhandledrejection', function (e) { show(String((e.reason && e.reason.message) || e.reason)); });
+  window.__showErr = show;
+  setTimeout(function () {
+    var s = document.getElementById('status');
+    if (s && /^Cargando/.test(s.textContent)) show('No terminó de cargar. Recarga con Ctrl+Shift+R; si sigue, abre la consola (F12) y mándame el mensaje en rojo.');
+  }, 5000);
+})();
+</script>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
+</script>
+</head>
+<body>
+<video id="cam" playsinline muted autoplay></video>
+<div id="stage"></div>
+<div id="cross" class="hide"></div>
+<canvas id="mini" width="320" height="320" class="hide"></canvas>
+<div id="top"><b id="title">Modo estación</b><div id="status">Cargando…</div><div id="warn"></div></div>
+
+<div id="panel">
+  <div id="minrow" class="row" style="justify-content:flex-end"><button id="btnMin" style="padding:6px 10px">Ocultar panel ▾</button></div>
+
+  <section id="secStart">
+    <p style="margin:0 0 8px">Cámara + giroscopio. Te paras sobre una marca del terreno y alineas el rumbo apuntando a otra marca.
+      <br><small>Usa el teléfono en vertical.</small></p>
+    <div class="row" style="margin-bottom:10px">
+      <label class="btnl" for="glb">Cargar mi modelo (.glb)</label>
+      <input type="file" id="glb" accept=".glb,.gltf,model/gltf-binary" class="hide">
+      <label>Unidades <select id="units"><option value="1">metros</option><option value="0.01">cm</option><option value="0.001">mm</option><option value="0.0254">pulgadas</option><option value="0.3048">pies</option></select></label>
+    </div>
+    <div id="modelInfo" style="margin-bottom:10px"><small>Usando la torre de ejemplo.</small></div>
+    <button id="btnStart" class="pri big">Iniciar cámara y sensores</button>
+    <p id="startMsg"><small></small></p>
+  </section>
+
+  <section id="secAlign" class="hide">
+    <h3>Alinear</h3>
+    <div class="row" style="margin-bottom:8px">
+      <label>Estoy en <select id="selStation"></select></label>
+      <label>Apunto a <select id="selTarget"></select></label>
+    </div>
+    <div id="instr" style="margin-bottom:8px"></div>
+    <button id="btnAlign" class="pri big">Alinear ahora</button>
+  </section>
+
+  <section id="secFine" class="hide">
+    <h3>Afinar y verificar</h3>
+    <div class="row" style="margin-bottom:8px">
+      <button data-yaw="-1">⟲ Giro</button><button data-yaw="1">Giro ⟳</button>
+      <label>Paso <select id="ystep"><option value="0.25">0.25°</option><option value="1" selected>1°</option><option value="3">3°</option></select></label>
+    </div>
+    <div class="row" style="margin-bottom:6px"><label>Campo de visión <input type="range" id="fov" min="40" max="85" step="0.5" value="60"></label><span id="fovv">60°</span></div>
+    <div class="row" style="margin-bottom:6px"><label>Altura de ojos <input type="range" id="eye" min="1" max="2" step="0.05" value="1.6"></label><span id="eyev">1.60 m</span></div>
+    <div class="row" style="margin-bottom:6px"><label>Opacidad <input type="range" id="opacity" min="0.15" max="1" step="0.05" value="1"></label>
+      <label><input type="checkbox" id="chkMarks" checked> Postes</label></div>
+    <div id="toggles" class="row" style="margin-bottom:6px"></div>
+    <small>Los postes naranjas deben caer sobre las otras marcas reales. Si todos se desplazan parejo hacia un lado: ajusta el giro. Si el error crece hacia los bordes: ajusta el campo de visión.</small>
+  </section>
+</div>
+<script type="module" src="./estacion.js" onerror="window.__showErr('No se pudo cargar estacion.js o three.js. Revisa que subiste la carpeta completa (incluida vendor/).')"></script>
+</body>
+</html>

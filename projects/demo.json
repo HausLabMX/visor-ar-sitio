@@ -1,0 +1,13 @@
+{
+  "name": "Demo · Torre en lote de 20 × 30 m",
+  "model": null,
+  "usdz": null,
+  "demoFloors": 4,
+  "controlPoints": [
+    { "id": "A", "label": "esquina suroeste del lote", "x": 0,  "z": 0 },
+    { "id": "B", "label": "esquina sureste del lote",  "x": 20, "z": 0 },
+    { "id": "C", "label": "esquina noreste del lote",  "x": 20, "z": 30 },
+    { "id": "D", "label": "esquina noroeste del lote", "x": 0,  "z": 30 }
+  ],
+  "toggles": []
+}

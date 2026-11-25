@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Visor AR en sitio</title>
+<style>
+  :root { --bg: rgba(18,22,28,.86); --fg:#f2f4f7; --mut:#9aa4b2; --acc:#ff8a1f; --ok:#35c26b; --bad:#ff5a5a; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; overflow:hidden; background:#10141a; font:15px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; color:var(--fg); }
+  canvas { display:block; position:fixed; inset:0; }
+  #ui { position:fixed; inset:0; pointer-events:none; }
+  #ui > * { pointer-events:auto; }
+  #top { position:absolute; left:0; right:0; top:0; padding:calc(env(safe-area-inset-top) + 8px) 12px 8px; background:linear-gradient(var(--bg),transparent); pointer-events:none; }
+  #top b { display:block; font-size:16px; }
+  #status { color:#ffd9b0; margin-top:2px; min-height:1.3em; }
+  #panel { position:absolute; left:8px; right:8px; bottom:calc(env(safe-area-inset-bottom) + 8px); background:var(--bg); border-radius:14px; padding:12px; max-height:62vh; overflow:auto; backdrop-filter:blur(8px); }
+  #panel.min > :not(#minrow) { display:none; }
+  section { margin-bottom:10px; } section:last-child { margin-bottom:0; }
+  h3 { margin:0 0 6px; font-size:13px; letter-spacing:.04em; text-transform:uppercase; color:var(--mut); }
+  button, .btn { appearance:none; border:0; border-radius:10px; padding:11px 14px; font:inherit; font-weight:600; background:#2a313c; color:var(--fg); cursor:pointer; text-decoration:none; display:inline-block; position:relative; }
+  button.pri, .btn.pri { background:var(--acc); color:#1b1206; }
+  button:disabled { opacity:.4; }
+  .row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .pts { display:flex; gap:6px; margin:6px 0; }
+  .pt { flex:1; text-align:center; padding:6px 0; border-radius:8px; background:#2a313c; color:var(--mut); font-weight:700; }
+  .pt.done { background:var(--ok); color:#06210f; } .pt.next { outline:2px solid var(--acc); color:var(--fg); }
+  .pad { display:grid; grid-template-columns:repeat(3,56px); gap:6px; flex:none; }
+  .pad button { padding:12px 0; }
+  label { color:var(--mut); display:flex; gap:6px; align-items:center; }
+  input[type=range] { width:140px; } select { background:#2a313c; color:var(--fg); border:0; border-radius:8px; padding:8px; font:inherit; }
+  #report { white-space:pre-line; font-variant-numeric:tabular-nums; color:#d6dbe3; }
+  .good { color:var(--ok); } .warn { color:#ffcf5a; } .bad { color:var(--bad); }
+  .hide { display:none !important; }
+  a.btn img { position:absolute; inset:0; width:100%; height:100%; opacity:0; }
+  small { color:var(--mut); }
+  details { margin-bottom:10px; } summary { font-weight:700; cursor:pointer; padding:4px 0; }
+  textarea { width:100%; background:#2a313c; color:var(--fg); border:0; border-radius:8px; padding:8px; font:14px ui-monospace,Menlo,monospace; margin:6px 0; }
+  .mlabel { display:block; margin-top:8px; }
+</style>
+<script>
+// Diagnóstico: muestra en pantalla cualquier error en vez de quedarse en "Cargando…"
+(function () {
+  function show(msg) { var s = document.getElementById('status'); if (s) { s.textContent = '⚠ ' + msg; s.style.color = '#ff9b9b'; } }
+  window.addEventListener('error', function (e) { show(e.message + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
+  window.addEventListener('unhandledrejection', function (e) { show(String((e.reason && e.reason.message) || e.reason)); });
+  window.__showErr = show;
+  setTimeout(function () {
+    var s = document.getElementById('status');
+    if (s && /^Cargando/.test(s.textContent)) show('No terminó de cargar. Recarga con Ctrl+Shift+R; si sigue, abre la consola (F12) y mándame el mensaje en rojo.');
+  }, 5000);
+})();
+</script>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
+</script>
+</head>
+<body>
+<div id="ui">
+  <div id="top"><b id="title">Visor AR en sitio</b><div id="status">Cargando…</div></div>
+
+  <div id="panel">
+    <div id="minrow" class="row" style="justify-content:flex-end"><button id="btnMin" style="padding:6px 10px">Ocultar panel ▾</button></div>
+
+    <details id="secModel">
+      <summary>Tu modelo (.glb) y tus marcas</summary>
+      <div class="row" style="margin:8px 0">
+        <label class="btn pri" for="glb" style="color:#1b1206">Cargar mi modelo (.glb)</label>
+        <input type="file" id="glb" accept=".glb,.gltf,model/gltf-binary" class="hide">
+        <label>Unidades <select id="units"><option value="1">metros</option><option value="0.01">centímetros</option><option value="0.001">milímetros</option><option value="0.0254">pulgadas</option><option value="0.3048">pies</option></select></label>
+      </div>
+      <div id="modelInfo"><small>Usando la torre de ejemplo.</small></div>
+      <label class="mlabel">Marcas, una por línea: <b>ID X Z descripción</b> (metros; planta vista desde arriba: X a la derecha, Z hacia abajo)</label>
+      <textarea id="marks" rows="4" spellcheck="false"></textarea>
+      <button id="btnMarks">Aplicar marcas</button>
+    </details>
+
+    <!-- Inicio -->
+    <section id="secStart">
+      <div class="row">
+        <button id="btnAR" class="pri hide">Iniciar AR en el terreno</button>
+        <a id="btnStation" class="btn" href="estacion.html">Modo estación (iPhone)</a>
+        <button id="btnPreview">Vista previa (sin AR)</button>
+        <a id="btnQL" class="btn hide" rel="ar" href="#"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==">Ver en AR (Quick Look)</a>
+      </div>
+      <p id="startMsg"><small></small></p>
+    </section>
+
+    <!-- Calibración por marcas -->
+    <section id="secCalib" class="hide">
+      <h3>1 · Calibrar con marcas del terreno</h3>
+      <div id="ptsRow" class="pts"></div>
+      <div id="instr"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="btnUndo">Deshacer</button>
+        <button id="btnApply" class="pri" disabled>Aplicar</button>
+        <button id="btnSim" class="hide">Simular terreno</button>
+      </div>
+      <label style="margin-top:8px"><input type="checkbox" id="chkScale"> Ajustar escala con las marcas (normalmente NO)</label>
+    </section>
+
+    <!-- Ajuste fino + interacción -->
+    <section id="secAdjust" class="hide">
+      <h3>2 · Verificar y afinar</h3>
+      <div id="report"></div>
+      <div class="row" style="margin:8px 0">
+        <label>Paso <select id="step"><option value="0.02">2 cm</option><option value="0.1" selected>10 cm</option><option value="0.5">50 cm</option></select></label>
+        <label>Giro <select id="rstep"><option value="0.25">0.25°</option><option value="1" selected>1°</option><option value="5">5°</option></select></label>
+      </div>
+      <div class="row" style="align-items:flex-start;gap:16px">
+        <div class="pad">
+          <span></span><button data-mv="f">▲</button><span></span>
+          <button data-mv="l">◀</button><button data-mv="b">▼</button><button data-mv="r">▶</button>
+        </div>
+        <div class="row" style="flex-direction:column;align-items:stretch;gap:6px">
+          <div class="row"><button data-rot="-1">⟲</button><button data-rot="1">⟳</button><button data-h="1">Subir</button><button data-h="-1">Bajar</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="secView" class="hide">
+      <h3>3 · Visualización</h3>
+      <div class="row" style="margin-bottom:6px"><label>Opacidad <input type="range" id="opacity" min="0.15" max="1" step="0.05" value="1"></label>
+        <label><input type="checkbox" id="chkMarks" checked> Postes y lote</label></div>
+      <div id="toggles" class="row"></div>
+      <div class="row" style="margin-top:8px"><button id="btnRecal">Recalibrar</button></div>
+    </section>
+
+    <section id="secEnd" class="hide"><button id="btnExit">Salir de AR</button></section>
+  </div>
+</div>
+<script type="module" src="./app.js" onerror="window.__showErr('No se pudo cargar app.js o three.js. Revisa que subiste la carpeta completa (incluida vendor/).')"></script>
+</body>
+</html>
