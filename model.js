@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { USDZExporter } from 'three/addons/exporters/USDZExporter.js';
 
 function makeLoader() {
   const l = new GLTFLoader();
@@ -111,3 +112,38 @@ export function setOpacity(root, v) {
     });
   });
 }
+
+// ── Quick Look (iPhone/iPad): AR nativo de Apple, con seguimiento al caminar ──
+// Exporta el modelo + postes a USDZ con el ORIGEN EN LA MARCA elegida: al tocar el piso
+// sobre esa estaca en Quick Look, el modelo queda apoyado ahí; luego se gira con dos dedos
+// hasta que el poste de la otra marca caiga sobre su estaca.
+export async function buildUsdz(cfg, modelRoot, originId) {
+  const CP = cfg.controlPoints;
+  const o = CP.find((p) => p.id === originId) || CP[0];
+  const g = new THREE.Group();
+  const m = modelRoot.clone(true);
+  m.visible = true; // en modo estación el modelo está oculto hasta alinear; las plantas apagadas siguen fuera
+  g.add(m);
+  const mat = new THREE.MeshStandardMaterial({ color: 0xff8a1f, emissive: 0xff8a1f, emissiveIntensity: 0.7 });
+  CP.forEach((p) => {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3, 12), mat);
+    pole.position.set(p.x, 1.5, p.z);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(p.id === o.id ? 0.3 : 0.18, 16, 12), mat);
+    cap.position.set(p.x, 3, p.z);
+    g.add(pole, cap);
+  });
+  g.position.set(-o.x, 0, -o.z);
+  const scene = new THREE.Scene(); scene.add(g); scene.updateMatrixWorld(true);
+  const bytes = await new USDZExporter().parse(scene);
+  return new Blob([bytes], { type: 'model/vnd.usdz+zip' });
+}
+export function openQuickLook(blob) {
+  const a = document.createElement('a');
+  a.rel = 'ar';
+  a.href = URL.createObjectURL(blob) + '#allowsContentScaling=0'; // fija la escala 1:1
+  a.appendChild(document.createElement('img'));
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => a.remove(), 1000);
+}
+export const supportsQuickLook = () => document.createElement('a').relList.supports('ar');

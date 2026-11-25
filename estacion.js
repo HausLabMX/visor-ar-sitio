@@ -5,7 +5,7 @@
 // rumbo absoluto. A partir de ahí el giroscopio mueve la cámara virtual (solo rotación, 3 grados
 // de libertad); la posición queda fija en la estación (o donde marques en el minimapa).
 import * as THREE from 'three';
-import { loadCfg, buildMarks, buildDemoBuilding, loadModel, setOpacity, loadGlbFile, describeModel, childNames } from './model.js';
+import { loadCfg, buildMarks, buildDemoBuilding, loadModel, setOpacity, loadGlbFile, describeModel, childNames, buildUsdz, openQuickLook, supportsQuickLook } from './model.js';
 
 const $ = (id) => document.getElementById(id);
 const setStatus = (t) => { $('status').textContent = t; };
@@ -82,6 +82,27 @@ $('glb').onchange = async (ev) => {
 $('units').onchange = () => {
   const u = parseFloat($('units').value); modelRoot.scale.setScalar(u);
   if (modelRoot.children[0]) $('modelInfo').innerHTML = '<small>' + describeModel(modelRoot.children[0], u) + '</small>';
+};
+
+/* ───────────── Quick Look (caminar en iPhone/iPad) ───────────── */
+$('qlOrigin').innerHTML = CP.map((p) => `<option value="${p.id}">${p.id} · ${p.label}</option>`).join('');
+function qlHelp() {
+  const o = $('qlOrigin').value, other = CP.find((p) => p.id !== o).id;
+  $('qlHelp').innerHTML = `<small>1) Párate cerca de la estaca <b>${o}</b> y mueve el iPhone apuntando al piso hasta que detecte el suelo. ` +
+    `2) Toca el piso <b>justo en la estaca ${o}</b> (ahí queda el poste grande). 3) Con dos dedos gira el modelo hasta que el poste <b>${other}</b> caiga sobre su estaca. ` +
+    `4) Camina: el edificio se queda en su lugar.</small>`;
+}
+$('qlOrigin').onchange = qlHelp; qlHelp();
+if (!supportsQuickLook()) $('qlHelp').innerHTML += '<br><small>⚠ Este navegador no tiene Quick Look (solo Safari en iPhone/iPad).</small>';
+$('btnQL').onclick = async () => {
+  const b = $('btnQL'); b.disabled = true; b.textContent = 'Preparando modelo…';
+  try {
+    const blob = await buildUsdz(cfg, modelRoot, $('qlOrigin').value);
+    window.__lastUsdz = blob;
+    if (supportsQuickLook()) openQuickLook(blob);
+    else setStatus('USDZ generado (' + (blob.size / 1e6).toFixed(1) + ' MB), pero Quick Look solo existe en Safari de iPhone/iPad');
+  } catch (err) { setStatus('⚠ No se pudo preparar el AR: ' + (err.message || err)); }
+  b.disabled = false; b.textContent = 'Ver en AR caminando';
 };
 
 /* ───────────── Estado ───────────── */

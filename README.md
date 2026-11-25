@@ -18,7 +18,10 @@ Muestra un edificio a escala 1:1 sobre el terreno real, calibrado con **marcas f
 7. Para ver desde otro punto: elige otra marca en «Estoy en» (y alinea de nuevo), o «Otra posición» y toca el minimapa donde estás.
 8. El giroscopio deriva con el tiempo: si se desalinea, pulsa «Alinear ahora» otra vez apuntando a la marca.
 
-Límites: no hay seguimiento de movimiento (si caminas, el modelo no se entera; vuelve a fijar posición con el minimapa o una marca). La precisión depende de qué tan bien apuntes a la marca y de que el campo de visión esté ajustado; hay que medirla en sitio.
+### Caminar alrededor en iPhone/iPad (Quick Look)
+En `estacion.html`, sección «Caminar alrededor»: elige la marca de origen y pulsa «Ver en AR caminando». Se abre el AR nativo de Apple, que sí sigue tu movimiento. Toca el piso justo en la estaca de origen y gira el modelo con dos dedos hasta que el poste de la otra marca caiga sobre su estaca. La escala queda fija en 1:1.
+
+Límites del modo estación: no hay seguimiento de movimiento (si caminas, el modelo no se entera; vuelve a fijar posición con el minimapa o una marca). La precisión depende de qué tan bien apuntes a la marca y de que el campo de visión esté ajustado; hay que medirla en sitio.
 
 ## Probar el modo AR (Android)
 
