@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { solveCalibration, rad2deg } from './calibrate.js';
-import { loadCfg, buildMarks, buildDemoBuilding, loadModel, setOpacity, loadGlbFile, describeModel, childNames, parseMarks, marksToText } from './model.js';
+import { loadCfg, buildMarks, buildDemoBuilding, loadModel, setOpacity, loadGlbFile, describeModel, childNames, parseMarks, marksToText, marksFromModel } from './model.js';
 
 const $ = (id) => document.getElementById(id);
 const ui = $('ui'), statusEl = $('status');
@@ -99,21 +99,34 @@ $('glb').onchange = async (e) => {
     const sc = await loadGlbFile(file, modelRoot);
     modelRoot.scale.setScalar(parseFloat($('units').value));
     toggleNames = childNames(sc); buildToggles();
-    $('modelInfo').innerHTML = '<small>' + file.name + ' · ' + describeModel(sc, parseFloat($('units').value)) + '</small>';
-    setStatus('Modelo cargado: ' + file.name);
+    const extra = tryModelMarks();
+    $('modelInfo').innerHTML = '<small>' + file.name + ' · ' + describeModel(sc, parseFloat($('units').value)) + extra + '</small>';
+    setStatus('Modelo cargado: ' + file.name + (extra ? extra : ''));
   } catch (err) { setStatus('⚠ ' + err.message); }
 };
 $('units').onchange = () => {
   const u = parseFloat($('units').value); modelRoot.scale.setScalar(u);
   const sc = modelRoot.children[0];
-  if (sc) $('modelInfo').innerHTML = '<small>' + describeModel(sc, u) + '</small>';
+  const extra = marksFromGlb ? tryModelMarks() : '';
+  if (sc) $('modelInfo').innerHTML = '<small>' + describeModel(sc, u) + extra + '</small>';
 };
+function applyMarks(list) {
+  CP.splice(0, CP.length, ...list);
+  markGroup.clear(); buildMarks(cfg, markGroup);
+  $('marks').value = marksToText(CP);
+  if (phase === 'collect') startCollect(); else renderPts();
+}
+let marksFromGlb = false;
+function tryModelMarks() {
+  const mk = marksFromModel(modelRoot, parseFloat($('units').value));
+  if (mk.length >= 2) { applyMarks(mk); marksFromGlb = true; return ' · Marcas leídas del modelo: ' + mk.map((p) => p.id).join(', '); }
+  if (mk.length === 1) return ' · ⚠ Solo encontré 1 marca en el modelo (se necesitan 2 o más).';
+  return '';
+}
 $('btnMarks').onclick = () => {
   try {
     const list = parseMarks($('marks').value);
-    CP.splice(0, CP.length, ...list);
-    markGroup.clear(); buildMarks(cfg, markGroup);
-    if (phase === 'collect') startCollect(); else renderPts();
+    applyMarks(list); marksFromGlb = false;
     setStatus(list.length + ' marcas aplicadas. Calibra de nuevo.');
   } catch (err) { setStatus('⚠ ' + err.message); }
 };

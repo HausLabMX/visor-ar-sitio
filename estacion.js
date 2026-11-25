@@ -5,7 +5,7 @@
 // rumbo absoluto. A partir de ahí el giroscopio mueve la cámara virtual (solo rotación, 3 grados
 // de libertad); la posición queda fija en la estación (o donde marques en el minimapa).
 import * as THREE from 'three';
-import { loadCfg, buildMarks, buildDemoBuilding, loadModel, setOpacity, loadGlbFile, describeModel, childNames, buildUsdz, openQuickLook, supportsQuickLook } from './model.js';
+import { loadCfg, buildMarks, buildDemoBuilding, loadModel, setOpacity, loadGlbFile, describeModel, childNames, buildUsdz, openQuickLook, supportsQuickLook, marksFromModel } from './model.js';
 
 const $ = (id) => document.getElementById(id);
 const setStatus = (t) => { $('status').textContent = t; };
@@ -53,7 +53,8 @@ function labelSprite(text) {
   s.scale.set(1.5, 1.5, 1);
   return s;
 }
-CP.forEach((p) => { const s = labelSprite(p.id); s.position.set(p.x, 4.2, p.z); markGroup.add(s); });
+function addLabels() { CP.forEach((p) => { const s = labelSprite(p.id); s.position.set(p.x, 4.2, p.z); markGroup.add(s); }); }
+addLabels();
 
 let toggleNames = cfg.toggles || [];
 function buildToggles() {
@@ -75,14 +76,26 @@ $('glb').onchange = async (ev) => {
     const sc = await loadGlbFile(file, modelRoot);
     modelRoot.scale.setScalar(parseFloat($('units').value));
     toggleNames = childNames(sc); buildToggles();
-    $('modelInfo').innerHTML = '<small>' + file.name + ' · ' + describeModel(sc, parseFloat($('units').value)) + '</small>';
+    const extra = tryModelMarks();
+    $('modelInfo').innerHTML = '<small>' + file.name + ' · ' + describeModel(sc, parseFloat($('units').value)) + extra + '</small>';
     setStatus('Modelo cargado: ' + file.name);
   } catch (err) { setStatus('⚠ ' + err.message); }
 };
 $('units').onchange = () => {
   const u = parseFloat($('units').value); modelRoot.scale.setScalar(u);
-  if (modelRoot.children[0]) $('modelInfo').innerHTML = '<small>' + describeModel(modelRoot.children[0], u) + '</small>';
+  const extra = marksFromGlb ? tryModelMarks() : '';
+  if (modelRoot.children[0]) $('modelInfo').innerHTML = '<small>' + describeModel(modelRoot.children[0], u) + extra + '</small>';
 };
+let marksFromGlb = false;
+function tryModelMarks() {
+  const mk = marksFromModel(modelRoot, parseFloat($('units').value));
+  if (mk.length < 2) return mk.length === 1 ? ' · ⚠ Solo hay 1 marca en el modelo (se necesitan 2+).' : '';
+  CP.splice(0, CP.length, ...mk); marksFromGlb = true;
+  markGroup.clear(); buildMarks(cfg, markGroup, { poleR: 0.1, capR: 0.35 }); addLabels();
+  fillSelects(); onStationChange(); computeMini();
+  $('qlOrigin').innerHTML = CP.map((p) => `<option value="${p.id}">${p.id} · ${p.label}</option>`).join(''); qlHelp();
+  return ' · Marcas leídas del modelo: ' + mk.map((p) => p.id).join(', ');
+}
 
 /* ───────────── Quick Look (caminar en iPhone/iPad) ───────────── */
 $('qlOrigin').innerHTML = CP.map((p) => `<option value="${p.id}">${p.id} · ${p.label}</option>`).join('');
@@ -201,10 +214,14 @@ $('btnMin').onclick = () => {
 
 /* ───────────── Minimapa ───────────── */
 const mini = $('mini'), mc = mini.getContext('2d');
-const xs = CP.map((p) => p.x), zs = CP.map((p) => p.z);
-const minX = Math.min(...xs), maxX = Math.max(...xs), minZ = Math.min(...zs), maxZ = Math.max(...zs);
-const span = Math.max(maxX - minX, maxZ - minZ, 5) * 1.5;
-const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2, SZ = mini.width, sc = SZ / span;
+const SZ = mini.width; let cx, cz, sc;
+function computeMini() {
+  const xs = CP.map((p) => p.x), zs = CP.map((p) => p.z);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minZ = Math.min(...zs), maxZ = Math.max(...zs);
+  const span = Math.max(maxX - minX, maxZ - minZ, 5) * 1.5;
+  cx = (minX + maxX) / 2; cz = (minZ + maxZ) / 2; sc = SZ / span;
+}
+computeMini();
 const m2s = (x, z) => [(x - cx) * sc + SZ / 2, (z - cz) * sc + SZ / 2];
 const s2m = (px, pz) => [(px - SZ / 2) / sc + cx, (pz - SZ / 2) / sc + cz];
 mini.addEventListener('pointerdown', (e) => {

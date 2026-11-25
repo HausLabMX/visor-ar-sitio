@@ -45,6 +45,10 @@ Límites del modo estación: no hay seguimiento de movimiento (si caminas, el mo
 - **Escala**: déjala fija en 1:1 (modelo en metros). «Ajustar escala con las marcas» solo sirve para diagnosticar deriva.
 - Mide las coordenadas de las marcas con cinta/estación total, o toma las esquinas del lote del plano topográfico.
 
+## Marcas dentro del modelo (Blender, SketchUp, Revit…)
+
+Si el GLB trae objetos o *empties* llamados `MARCA_A`, `MARCA_B`, `MARCA_C`… el visor los lee solo al cargar el archivo (botón «Cargar mi modelo»). En Blender: Add → Empty → Plain Axes en cada punto del terreno donde pondrás una estaca, renómbralo `MARCA_A`, etc., y exporta a glTF 2.0 (.glb) con «+Y Up» activado.
+
 ## Tu propio proyecto
 
 1. Exporta el modelo a **GLB** en **metros**, Y arriba. Optimiza (Draco/meshopt, texturas KTX2, < 20–30 MB).

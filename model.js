@@ -70,8 +70,16 @@ export async function loadGlbFile(file, root) {
 
 // Medidas del modelo (para comprobar que viene en metros)
 export function modelInfo(obj) {
+  // Medir en las unidades propias del archivo (sin la escala de «Unidades» ni la calibración del padre),
+  // sin contar los objetos MARCA_*
+  const re = /^(?:marca|mark|cp)[ _.\-]*[a-z0-9]+?(?:[._]\d{3})?$/i;
+  const isMark = (o) => { for (let n = o; n && n !== obj; n = n.parent) if (re.test(n.name || '')) return true; return false; };
+  const parent = obj.parent; if (parent) parent.remove(obj);
   obj.updateMatrixWorld(true);
-  const b = new THREE.Box3().setFromObject(obj);
+  const b = new THREE.Box3();
+  obj.traverse((o) => { if (o.isMesh && !isMark(o)) b.expandByObject(o); });
+  if (b.isEmpty()) b.setFromObject(obj);
+  if (parent) { parent.add(obj); obj.updateMatrixWorld(true); }
   return { size: b.getSize(new THREE.Vector3()), min: b.min.clone(), max: b.max.clone() };
 }
 export function describeModel(obj, unitScale) {
@@ -147,3 +155,20 @@ export function openQuickLook(blob) {
   setTimeout(() => a.remove(), 1000);
 }
 export const supportsQuickLook = () => document.createElement('a').relList.supports('ar');
+
+// Marcas definidas dentro del modelo: objetos/empties llamados MARCA_A, MARCA_B… (también "Marca A", "CP_A")
+// Devuelve coordenadas en metros, en el mismo sistema que usa el visor (glTF: X derecha, Y arriba, Z hacia "abajo" en planta).
+export function marksFromModel(modelRoot, unitScale) {
+  const out = [], re = /^(?:marca|mark|cp)[ _.\-]*([a-z0-9]+?)(?:[._]\d{3})?$/i;
+  modelRoot.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(modelRoot.matrixWorld).invert();
+  const m = new THREE.Matrix4(), v = new THREE.Vector3();
+  modelRoot.traverse((o) => {
+    if (o === modelRoot) return;
+    const r = (o.name || '').match(re);
+    if (!r || out.some((p) => p.id === r[1].toUpperCase())) return;
+    m.multiplyMatrices(inv, o.matrixWorld); v.setFromMatrixPosition(m).multiplyScalar(unitScale);
+    out.push({ id: r[1].toUpperCase(), x: +v.x.toFixed(3), z: +v.z.toFixed(3), label: 'marca ' + r[1].toUpperCase() + ' (del modelo)' });
+  });
+  return out.sort((a, b) => a.id.localeCompare(b.id, 'es', { numeric: true }));
+}
